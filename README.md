@@ -1,6 +1,6 @@
 # GettingUp-ASL
-Load Removal script for Getting Up
+Autosplitter and Load Removal script for Getting Up
 
 ASL = Autosplitter Language for livesplit.
 
-Couldn't get autosplitting function yet because, i can't find any reliable static pointer to compare.
+The game directory need to have exactly 5 spaces in order to work for now. (Ex. "C:\[nospaces folders]\Getting Up - Contents Under Pressure\_bin\GettingUp.exe")
