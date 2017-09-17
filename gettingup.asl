@@ -1,16 +1,10 @@
+//Author: Bilakispa (http://www.speedrun.com/user/bilakispa)
 //Thanks to:
-//-Jazz: http://www.speedrun.com/user/Jazz
-//-Robotic: http://www.speedrun.com/user/RoboticDream
-
-//TODO: Need to make it directory independent, for now just use the the 5 spaces in the "...\Getting Up - Contents Under Pressure\_Bin\GettingUp.exe" path.
-//TODO: Figure out a smart way how to switch from onceMapName to startMapName, plus on reset start with onceMapName and then go with startMapName
+//Jazz (http://www.speedrun.com/user/Jazz)
+//Robotic (http://www.speedrun.com/user/RoboticDream)
 
 state("GettingUp") {
 	byte notLoading: "GettingUp.exe", 0x798100;
-	string30 onceMapName: "GettingUp.exe", 0x264DA4, 0x0; //This is used until a level is completed
-	string30 startMapName: "GettingUp.exe", 0x264DA8, 0x0;	//This is where the map name writes when the level loads
-	string30 endMapName: "GettingUp.exe", 0x264DE0, 0x0; //This is where to map name writes when the level is finished
-	string256 finalCutscene: "GettingUp.exe", 0x26B500
 }
 	
 startup {
@@ -119,17 +113,85 @@ startup {
 	settings.Add("split33", true, "The Blimp Roof", "chapter11");
 }
 
+init {
+	vars.MEGU_OFFSET = 0x400000; //An offset from "GettingUp.exe"
+	
+	vars.firstGameStarted = false;
+	vars.gameDirStartAddr = 0x264D68;
+	vars.gameDirEndOffset = 0x0;
+	vars.finalCutsceneAddr = 0x26B500;
+	
+	vars.firstCutsceneBefore = false;
+	vars.firstCutsceneAfter = false;
+	
+	vars.completedLevelOnce = false;
+	vars.onceMapNameOffset = 0x28;
+	vars.startMapNameOffset = 0x2C;
+	vars.endMapNameOffset = 0x64;
+	
+	current.startMapName = "";
+	current.endMapName = "";
+	current.finalCutscene = "";
+}
+
+update {
+	if(vars.firstGameStarted) {
+		if(vars.completedLevelOnce) {
+			current.startMapName = memory.ReadString(memory.ReadPointer((IntPtr)(vars.gameDirStartAddr + vars.gameDirEndOffset + vars.startMapNameOffset + vars.MEGU_OFFSET)), 30);
+		} else {
+			current.startMapName = memory.ReadString(memory.ReadPointer((IntPtr)(vars.gameDirStartAddr + vars.gameDirEndOffset + vars.onceMapNameOffset + vars.MEGU_OFFSET)), 30);
+			if(!current.startMapName.StartsWith("map:")) {
+				current.startMapName = memory.ReadString(memory.ReadPointer((IntPtr)(vars.gameDirStartAddr + vars.gameDirEndOffset + vars.startMapNameOffset + vars.MEGU_OFFSET)), 30);
+				vars.completedLevelOnce = true;
+			}
+		}
+		
+		current.endMapName = memory.ReadString(memory.ReadPointer((IntPtr)(vars.gameDirStartAddr + vars.gameDirEndOffset + vars.endMapNameOffset + vars.MEGU_OFFSET)), 30);
+		if(current.endMapName == null)
+			current.endMapName = "";
+		
+		current.finalCutscene = memory.ReadString((IntPtr)(vars.finalCutsceneAddr + vars.MEGU_OFFSET), 256);
+		if(current.finalCutscene == null)
+			current.finalCutscene = "";
+	} else {
+		vars.secondAddr = memory.ReadPointer((IntPtr)(vars.gameDirStartAddr + 0x4 + vars.MEGU_OFFSET));
+		if(vars.secondAddr != IntPtr.Zero) {
+			vars.firstGameStarted = true; //A level has started
+			while(vars.gameDirEndOffset < 0x100) { //0x100 = a number to limit how far the check will search for spaces
+				if(memory.ReadString(memory.ReadPointer((IntPtr)(vars.gameDirStartAddr + vars.gameDirEndOffset + vars.MEGU_OFFSET)), 255).EndsWith(".exe")) {
+					break;
+				}
+				
+				vars.gameDirEndOffset += 0x4;
+			}
+			
+			current.startMapName = "";
+		} else { //A level hasn't started yet, don't do the start{} check.
+			return false;
+		}
+	}
+}
+
 start {
-	if((old.onceMapName.Equals(vars.levels[0]) && current.onceMapName.Equals(vars.levels[1])) || //Used on the first run
-	(old.startMapName.Equals(vars.levels[0]) && current.startMapName.Equals(vars.levels[1])))	//Used after the first run
-		return true;
+	if(vars.firstCutsceneAfter) { //if passed the cutscene and is on loading screen
+		if(current.startMapName.Equals(vars.levels[0])) { //Reseting the vars when manually reseting the timer
+				vars.firstCutsceneBefore = vars.firstCutsceneAfter = false;
+		} else if(current.startMapName.Equals(vars.levels[1]) && current.notLoading == 1) { //if passed the loading screen
+			return true;
+		}
+	} else if(vars.firstCutsceneBefore) { //if passed the cutscene but before the loading screen
+		if(current.notLoading != 1) {
+			vars.firstCutsceneAfter = true;
+		}
+	} else if(old.startMapName.Equals(vars.levels[0]) && current.startMapName.Equals(vars.levels[1])) {
+		vars.firstCutsceneBefore = true;
+	}
 }
 
 split {
 	if(current.endMapName.Equals(vars.levels[34])) { //if it's on main screen after completing a level
 		for(int i=1; i<34; i++) {
-			if((String.Equals(old.onceMapName, vars.levels[i], StringComparison.OrdinalIgnoreCase) ||
-			String.Equals(old.startMapName, vars.levels[i], StringComparison.OrdinalIgnoreCase)) && settings["split" + i])
+			if(String.Equals(old.startMapName, vars.levels[i], StringComparison.OrdinalIgnoreCase) && settings["split" + i])
 				return true;
 		}
 	}
@@ -145,7 +207,6 @@ isLoading {
 	return current.notLoading != 1;
 }
 
-exit
-{
+exit {
     timer.IsGameTimePaused = false;
 }
