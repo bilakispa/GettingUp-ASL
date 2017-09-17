@@ -1,0 +1,38 @@
+So there is a block of pointers that starts at: 0x664D68 (GettingUp.exe + 0x264D68)
+At the start of the game, before actually loading a map the first pointer points at a string with the destination of the game
+(e.x. "C:\Users\User\Documents\Getting Up - Contents Under Pressure\_Bin\GettingUp.exe").
+After the first map loading it loads a block of pointers AND it splits the first pointer into multiple ones by how many spaces are in the destination.
+So:
+0x664D68: C:\Users\User\Documents\Getting
+00664D6C: Up
+00664D70: -
+00664D74: Contents
+00664D78: Under
+00664D7C: Pressure\_Bin\GettingUp.exe
+Then the next values are: (don't care about the values)
+00664D80: controller:-1
+00664D84: memoryunit:0
+~ 7 more pointers storing various stuff
+00664DA4: map:[map_name_here]
+00664DA8: title:0
+00664DAC: previousmap:[map_name_here]
+~ etc
+
+That's all the values while playing any level first time after loading the game.
+When the level is finished it adds at the end of the block a pointer pointing to value "LastMapIndex:" and then moves to the end the map pointer.
+00664DDC: LastMapIndex:3 (After i finished the second level and with the above destination)
+00664DE0: map:m_rhapsody_shell
+
+Then every time a level is loaded the "LastMapIndex:" pointer goes after the destination pointer and moves everything else by 4 bytes.
+00664D80: LastMapIndex:3
+00664D84: controller:-1
+~ a coumple more stuff
+00664DA8: map:[map_name_here]
+~etc
+
+==========
+Conclusion
+==========
+So according to the specific game destination, at the first time playing level the map name pointer is at: 00664DA4
+After ending any level the map name pointer is at: 00664DE0
+And after loading any level the map name pointer is at: 00664DA8
