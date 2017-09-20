@@ -35,7 +35,7 @@ startup {
 		"map:M07_HOO_Blind_Justice_2",
 		"map:M07_HOO_Blind_Justice_3",
 		"map:M08_HOO_Remember_Alamo_1",
-		"map:M08_HOO_Remember_Alamo_2",
+		"map:M08_HOO_Remember_Alamo_3",
 		"map:M09_CIV_Cat_and_Mouse_1a",
 		"map:M09_CIV_Cat_and_Mouse_1b",
 		"map:M09_CIV_Cat_and_Mouse_2",
