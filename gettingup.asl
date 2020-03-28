@@ -2,7 +2,6 @@
 //Thanks to:
 //Jazz (http://www.speedrun.com/user/Jazz)
 //Robotic (http://www.speedrun.com/user/RoboticDream)
-
 state("GettingUp") {
 	byte notLoading: "GettingUp.exe", 0x798100;
 }
@@ -115,76 +114,101 @@ startup {
 
 init {
 	vars.MEGU_OFFSET = 0x400000; //An offset from "GettingUp.exe"
+	vars.EXE_DIRECTORY_OFFSET = 0x264D68; // And offset for the pointer that shows where the .exe is
+	vars.CONFIG_OFFSET = 0x0; // Offset from the end of directory
+	vars.MAP_ONLOAD_OFFSET = 0x24; // Offset for the map: at the load of a level
+	vars.MAP_ONFINISH_OFFSET = 0x60; // Offset for the map: at the finish of a level
+	vars.FINAL_CUTSCENE_ADDR = 0x26B500;
 	
-	vars.firstGameStarted = false;
-	vars.gameDirStartAddr = 0x264D68;
-	vars.gameDirEndOffset = 0x0;
-	vars.finalCutsceneAddr = 0x26B500;
-	
-	vars.firstCutsceneBefore = false;
-	vars.firstCutsceneAfter = false;
-	
-	vars.completedLevelOnce = false;
-	vars.onceMapNameOffset = 0x28;
-	vars.startMapNameOffset = 0x2C;
-	vars.endMapNameOffset = 0x64;
-	
+	vars.gameSessionStatus = 0; // 0 = Initialized, 1 = Started a level, 2 = Finished a level
+	vars.firstLevelStatus = 0; // 0 = Not Detected, 1 = Detected (Before Loading), 2 = Detected after loading (START)
+
+	// Find the config offset
+	for(int i=0; i<100; i++) {
+		IntPtr stringPointer = memory.ReadPointer((IntPtr)(vars.MEGU_OFFSET + vars.EXE_DIRECTORY_OFFSET + vars.CONFIG_OFFSET));
+		String directoryString = memory.ReadString(stringPointer, 256);
+		
+		vars.CONFIG_OFFSET += 0x4;
+		
+		if (directoryString.EndsWith("GettingUp.exe")) { // Found the offset
+			break;
+		}
+	}
+
 	current.startMapName = "";
 	current.endMapName = "";
 	current.finalCutscene = "";
 }
 
 update {
-	if(vars.firstGameStarted) {
-		if(vars.completedLevelOnce) {
-			current.startMapName = memory.ReadString(memory.ReadPointer((IntPtr)(vars.gameDirStartAddr + vars.gameDirEndOffset + vars.startMapNameOffset + vars.MEGU_OFFSET)), 30);
-		} else {
-			current.startMapName = memory.ReadString(memory.ReadPointer((IntPtr)(vars.gameDirStartAddr + vars.gameDirEndOffset + vars.onceMapNameOffset + vars.MEGU_OFFSET)), 30);
-			if(!current.startMapName.StartsWith("map:")) {
-				current.startMapName = memory.ReadString(memory.ReadPointer((IntPtr)(vars.gameDirStartAddr + vars.gameDirEndOffset + vars.startMapNameOffset + vars.MEGU_OFFSET)), 30);
-				vars.completedLevelOnce = true;
-			}
-		}
-		
-		current.endMapName = memory.ReadString(memory.ReadPointer((IntPtr)(vars.gameDirStartAddr + vars.gameDirEndOffset + vars.endMapNameOffset + vars.MEGU_OFFSET)), 30);
-		if(current.endMapName == null)
-			current.endMapName = "";
-		
-		current.finalCutscene = memory.ReadString((IntPtr)(vars.finalCutsceneAddr + vars.MEGU_OFFSET), 256);
-		if(current.finalCutscene == null)
-			current.finalCutscene = "";
-	} else {
-		vars.secondAddr = memory.ReadPointer((IntPtr)(vars.gameDirStartAddr + 0x4 + vars.MEGU_OFFSET));
-		if(vars.secondAddr != IntPtr.Zero) {
-			vars.firstGameStarted = true; //A level has started
-			while(vars.gameDirEndOffset < 0x100) { //0x100 = a number to limit how far the check will search for spaces
-				if(memory.ReadString(memory.ReadPointer((IntPtr)(vars.gameDirStartAddr + vars.gameDirEndOffset + vars.MEGU_OFFSET)), 255).EndsWith(".exe")) {
-					break;
-				}
-				
-				vars.gameDirEndOffset += 0x4;
+	switch((int)vars.gameSessionStatus) {
+		case 0:
+			IntPtr firstConfigPointer = memory.ReadPointer((IntPtr)(vars.MEGU_OFFSET + vars.EXE_DIRECTORY_OFFSET + vars.CONFIG_OFFSET + vars.MAP_ONLOAD_OFFSET));
+			
+			if (firstConfigPointer == IntPtr.Zero) { // Not started a level
+				return false; // Don't do start {} check
 			}
 			
-			current.startMapName = "";
-		} else { //A level hasn't started yet, don't do the start{} check.
-			return false;
-		}
+			if (vars.CONFIG_OFFSET == 4) { 
+				for(int i=0; i<100; i++) { // Find the correct config offset
+					IntPtr stringPointer = memory.ReadPointer((IntPtr)(vars.MEGU_OFFSET + vars.EXE_DIRECTORY_OFFSET + vars.CONFIG_OFFSET));
+					String directoryString = memory.ReadString(stringPointer, 256);
+					
+					vars.CONFIG_OFFSET += 0x4;
+					
+					if (directoryString.EndsWith("GettingUp.exe")) { // Found the offset
+						break;
+					}
+				}
+			}
+			
+			vars.gameSessionStatus = 1;
+		break;
+		case 1: // Started a level
+			IntPtr mapLoadPointer = memory.ReadPointer((IntPtr)(vars.MEGU_OFFSET + vars.EXE_DIRECTORY_OFFSET + vars.CONFIG_OFFSET + vars.MAP_ONLOAD_OFFSET));
+			String mapLoadString = memory.ReadString(mapLoadPointer, 30);
+			
+			if (!mapLoadString.StartsWith("map:")) { // Finished a level
+				vars.MAP_ONLOAD_OFFSET += 0x4;
+				vars.gameSessionStatus = 2;
+			}
+		break;
+	}
+	
+	current.startMapName = memory.ReadString(memory.ReadPointer((IntPtr)(vars.MEGU_OFFSET + vars.EXE_DIRECTORY_OFFSET + vars.CONFIG_OFFSET + vars.MAP_ONLOAD_OFFSET)), 30);
+	if (current.startMapName == null) {
+		current.startMapName = "";
+	}
+	
+	current.endMapName = memory.ReadString(memory.ReadPointer((IntPtr)(vars.MEGU_OFFSET + vars.EXE_DIRECTORY_OFFSET + vars.CONFIG_OFFSET + vars.MAP_ONFINISH_OFFSET)), 30);
+	if(current.endMapName == null) {
+		current.endMapName = "";
+	}
+	
+	current.finalCutscene = memory.ReadString((IntPtr)(vars.MEGU_OFFSET + vars.FINAL_CUTSCENE_ADDR), 256);
+	if(current.finalCutscene == null) {
+		current.finalCutscene = "";
 	}
 }
 
 start {
-	if(vars.firstCutsceneAfter) { //if passed the cutscene and is on loading screen
-		if(current.startMapName.Equals(vars.levels[0])) { //Reseting the vars when manually reseting the timer
-				vars.firstCutsceneBefore = vars.firstCutsceneAfter = false;
-		} else if(current.startMapName.Equals(vars.levels[1]) && current.notLoading == 1) { //if passed the loading screen
-			return true;
-		}
-	} else if(vars.firstCutsceneBefore) { //if passed the cutscene but before the loading screen
-		if(current.notLoading != 1) {
-			vars.firstCutsceneAfter = true;
-		}
-	} else if(old.startMapName.Equals(vars.levels[0]) && current.startMapName.Equals(vars.levels[1])) {
-		vars.firstCutsceneBefore = true;
+	switch((int)vars.firstLevelStatus) {
+		case 0: // Not detected a level start
+			if (current.startMapName.Equals(vars.levels[1])) {
+				vars.firstLevelStatus = 1;
+			}
+		break;
+		case 1: // Detected, before loading screen
+			if (current.startMapName.Equals(vars.levels[1]) && current.notLoading != 1) { // Is on the loading screen
+				vars.firstLevelStatus = 2;
+			}
+		break;
+		case 2: // Detected, on the loading screen
+			if(current.startMapName.Equals(vars.levels[1]) && current.notLoading == 1) { // Passed the loading screen
+				vars.firstLevelStatus = 0; // Reset the var to not re-start on trying to reset while is on the level
+				return true;
+			}
+		break;
 	}
 }
 
